@@ -1,6 +1,6 @@
 import { Address, Enrollment } from "@prisma/client";
 import { request } from "@/utils/request";
-import { notFoundError } from "@/errors";
+import { invalidDataError, notFoundError } from "@/errors";
 import {
   addressRepository,
   CreateAddressParams,
@@ -9,53 +9,41 @@ import {
 } from "@/repositories";
 import { exclude } from "@/utils/prisma-utils";
 
-// TODO - Receber o CEP por parâmetro nesta função.
-async function getAddressFromCEP(cep: string) {
-  try {
-    const response = await request.get(
-      `${process.env.VIA_CEP_API}/${cep}/json/`
-    );
+type cpfInfo = {
+  logradouro: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+};
 
-    if (response.status === 200) {
-      const data = response.data;
-      if (data.erro === true) {
-        return {
-          status: 400,
-          message: "CEP válido, mas inexistente",
-        };
-      }
+async function cpfValidation(cep: string) {
+  const response = await request.get(`${process.env.VIA_CEP_API}/${cep}/json/`);
+  if (response.status === 200) {
+    const cpfData = response.data;
 
-      const addressData = {
-        logradouro: data.logradouro,
-        complemento: data.complemento,
-        bairro: data.bairro,
-        cidade: data.localidade,
-        uf: data.uf,
-      };
-      return addressData;
-      
-    } else if (response.status === 400) {
-      return {
-        status: 400,
-        message: "Formato inválido",
-      };
-    } else {
-      return {
-        status: response.status,
-        message: "Erro na chamada à API VIACEP",
-      };
+    if (response.data.erro === true) {
+      throw invalidDataError("CEP válido, mas inexistente");
     }
-  } catch (error) {
-    return {
-      status: 500,
-      message: "Erro interno do servidor",
+
+    const addressData: cpfInfo = {
+      logradouro: cpfData.logradouro,
+      complemento: cpfData.complemento,
+      bairro: cpfData.bairro,
+      cidade: cpfData.localidade,
+      uf: cpfData.uf,
     };
+    return addressData;
+  } else if (response.status === 400) {
+    throw invalidDataError("Formato inválido");
   }
+}
+async function getAddressFromCEP(cep: string)  {
+  const response = await cpfValidation(cep);
+  return response
 }
 
 // TODO: Tratar regras de negócio e lanças eventuais erros
-
-// FIXME: não estamos interessados em todos os campos
 
 async function getOneWithAddressByUserId(
   userId: number
@@ -104,6 +92,7 @@ async function createOrUpdateEnrollmentWithAddress(
   const address = getAddressForUpsert(params.address);
 
   // TODO - Verificar se o CEP é válido antes de associar ao enrollment.
+  await cpfValidation(params.cpf)
 
   const newEnrollment = await enrollmentRepository.upsert(
     params.userId,
