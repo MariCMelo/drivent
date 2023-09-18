@@ -20,27 +20,26 @@ type cpfInfo = {
 async function cpfValidation(cep: string) {
   const response = await request.get(`${process.env.VIA_CEP_API}/${cep}/json/`);
   if (response.status === 200) {
-    const cpfData = response.data;
-
     if (response.data.erro === true) {
       throw invalidDataError("CEP válido, mas inexistente");
     }
-
-    const addressData: cpfInfo = {
-      logradouro: cpfData.logradouro,
-      complemento: cpfData.complemento,
-      bairro: cpfData.bairro,
-      cidade: cpfData.localidade,
-      uf: cpfData.uf,
-    };
-    return addressData;
   } else if (response.status === 400) {
     throw invalidDataError("Formato inválido");
   }
+  return response.data;
 }
-async function getAddressFromCEP(cep: string)  {
-  const response = await cpfValidation(cep);
-  return response
+async function getAddressFromCEP(cep: string) {
+  const cpfData = await cpfValidation(cep);
+
+  const addressData: cpfInfo = {
+    logradouro: cpfData.logradouro,
+    complemento: cpfData.complemento,
+    bairro: cpfData.bairro,
+    cidade: cpfData.localidade,
+    uf: cpfData.uf,
+  };
+
+  return addressData;
 }
 
 // TODO: Tratar regras de negócio e lanças eventuais erros
@@ -92,7 +91,7 @@ async function createOrUpdateEnrollmentWithAddress(
   const address = getAddressForUpsert(params.address);
 
   // TODO - Verificar se o CEP é válido antes de associar ao enrollment.
-  await cpfValidation(params.cpf)
+  await cpfValidation(params.cpf);
 
   const newEnrollment = await enrollmentRepository.upsert(
     params.userId,
@@ -118,4 +117,5 @@ export const enrollmentsService = {
   getOneWithAddressByUserId,
   createOrUpdateEnrollmentWithAddress,
   getAddressFromCEP,
+  cpfValidation,
 };
