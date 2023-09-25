@@ -1,103 +1,61 @@
-import { Address, Enrollment } from "@prisma/client";
-import { request } from "@/utils/request";
-import { invalidDataError, notFoundError } from "@/errors";
-import {
-  addressRepository,
-  CreateAddressParams,
-  enrollmentRepository,
-  CreateEnrollmentParams,
-} from "@/repositories";
-import { exclude } from "@/utils/prisma-utils";
+import { Address, Enrollment } from '@prisma/client';
+import { request } from '@/utils/request';
+import { enrollmentNotFoundError, invalidCepError } from '@/errors';
+import { addressRepository, CreateAddressParams, enrollmentRepository, CreateEnrollmentParams } from '@/repositories';
+import { exclude } from '@/utils/prisma-utils';
+import { AddressEnrollment } from '@/protocols';
 
-type cpfInfo = {
-  logradouro: string;
-  complemento: string;
-  bairro: string;
-  cidade: string;
-  uf: string;
-};
+async function getAddressFromCEP(cep: string): Promise<AddressEnrollment> {
+  const result = await request.get(`${process.env.VIA_CEP_API}/${cep}/json/`);
 
-async function cpfValidation(cep: string) {
-  const response = await request.get(`${process.env.VIA_CEP_API}/${cep}/json/`);
-  if (response.status === 200) {
-    if (response.data.erro === true) {
-      throw invalidDataError("CEP válido, mas inexistente");
-    }
-  } else if (response.status === 400) {
-    throw invalidDataError("Formato inválido");
+  if (!result.data || result.data.erro) {
+    throw invalidCepError();
   }
-  return response.data;
-}
-async function getAddressFromCEP(cep: string) {
-  const cpfData = await cpfValidation(cep);
 
-  const addressData: cpfInfo = {
-    logradouro: cpfData.logradouro,
-    complemento: cpfData.complemento,
-    bairro: cpfData.bairro,
-    cidade: cpfData.localidade,
-    uf: cpfData.uf,
+  const { bairro, localidade, uf, complemento, logradouro } = result.data;
+  const address: AddressEnrollment = {
+    bairro,
+    cidade: localidade,
+    uf,
+    complemento,
+    logradouro,
   };
 
-  return addressData;
+  return address;
 }
 
-// TODO: Tratar regras de negócio e lanças eventuais erros
+async function getOneWithAddressByUserId(userId: number): Promise<GetOneWithAddressByUserIdResult> {
+  const enrollmentWithAddress = await enrollmentRepository.findWithAddressByUserId(userId);
 
-async function getOneWithAddressByUserId(
-  userId: number
-): Promise<GetOneWithAddressByUserIdResult> {
-  const enrollmentWithAddress =
-    await enrollmentRepository.findWithAddressByUserId(userId);
-
-  if (!enrollmentWithAddress) throw notFoundError();
+  if (!enrollmentWithAddress) throw enrollmentNotFoundError();
 
   const [firstAddress] = enrollmentWithAddress.Address;
   const address = getFirstAddress(firstAddress);
 
   return {
-    ...exclude(
-      enrollmentWithAddress,
-      "userId",
-      "createdAt",
-      "updatedAt",
-      "Address"
-    ),
+    ...exclude(enrollmentWithAddress, 'userId', 'createdAt', 'updatedAt', 'Address'),
     ...(!!address && { address }),
   };
 }
 
-type GetOneWithAddressByUserIdResult = Omit<
-  Enrollment,
-  "userId" | "createdAt" | "updatedAt"
->;
+type GetOneWithAddressByUserIdResult = Omit<Enrollment, 'userId' | 'createdAt' | 'updatedAt'>;
 
 function getFirstAddress(firstAddress: Address): GetAddressResult {
   if (!firstAddress) return null;
 
-  return exclude(firstAddress, "createdAt", "updatedAt", "enrollmentId");
+  return exclude(firstAddress, 'createdAt', 'updatedAt', 'enrollmentId');
 }
 
-type GetAddressResult = Omit<
-  Address,
-  "createdAt" | "updatedAt" | "enrollmentId"
->;
+type GetAddressResult = Omit<Address, 'createdAt' | 'updatedAt' | 'enrollmentId'>;
 
-async function createOrUpdateEnrollmentWithAddress(
-  params: CreateOrUpdateEnrollmentWithAddress
-) {
-  const enrollment = exclude(params, "address");
+async function createOrUpdateEnrollmentWithAddress(params: CreateOrUpdateEnrollmentWithAddress) {
+  const enrollment = exclude(params, 'address');
   enrollment.birthday = new Date(enrollment.birthday);
   const address = getAddressForUpsert(params.address);
 
-  // TODO - Verificar se o CEP é válido antes de associar ao enrollment.
-  await cpfValidation(params.cpf);
+  await getAddressFromCEP(address.cep);
 
-  const newEnrollment = await enrollmentRepository.upsert(
-    params.userId,
-    enrollment,
-    exclude(enrollment, "userId")
-  );
+  const newEnrollment = await enrollmentRepository.upsert(params.userId, enrollment, exclude(enrollment, 'userId'));
 
   await addressRepository.upsert(newEnrollment.id, address, address);
 }
@@ -117,5 +75,4 @@ export const enrollmentsService = {
   getOneWithAddressByUserId,
   createOrUpdateEnrollmentWithAddress,
   getAddressFromCEP,
-  cpfValidation,
 };
