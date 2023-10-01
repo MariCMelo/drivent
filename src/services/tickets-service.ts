@@ -1,39 +1,41 @@
 import { TicketStatus } from '@prisma/client';
-import { notFoundError } from '@/errors';
-import { enrollmentRepository } from '@/repositories';
-import { ticketsRepository } from '@/repositories/tickets-repository';
+import { invalidDataError, notFoundError } from '@/errors';
+import { CreateTicketParams } from '@/protocols';
+import { enrollmentRepository, ticketsRepository } from '@/repositories';
 
-async function getTicketsTypes() {
-  const tickets = await ticketsRepository.getTicketsTypes();
-  return tickets;
+async function findTicketTypes() {
+  const ticketTypes = await ticketsRepository.findTicketTypes();
+  return ticketTypes;
 }
 
-async function getUserTicket(userId: number) {
-  const enrollment = await enrollmentRepository.getEnrollment(userId);
+async function getTicketByUserId(userId: number) {
+  const enrollment = await enrollmentRepository.findWithAddressByUserId(userId);
   if (!enrollment) throw notFoundError();
 
-  const ticket = await ticketsRepository.getTicketWithUser(enrollment.id);
+  const ticket = await ticketsRepository.findTicketByEnrollmentId(enrollment.id);
   if (!ticket) throw notFoundError();
 
   return ticket;
 }
 
-async function createUserTicket(userId: number, ticketTypeId: number) {
-  const enrollment = await enrollmentRepository.getEnrollment(userId);
+async function createTicket(userId: number, ticketTypeId: number) {
+  if (!ticketTypeId) throw invalidDataError('ticketTypeId');
+
+  const enrollment = await enrollmentRepository.findWithAddressByUserId(userId);
   if (!enrollment) throw notFoundError();
 
-  const ticketFormated = {
-    ticketTypeId,
+  const ticketData: CreateTicketParams = {
     enrollmentId: enrollment.id,
+    ticketTypeId,
     status: TicketStatus.RESERVED,
   };
 
-  const ticket = await ticketsRepository.createUserTicket(ticketFormated);
+  const ticket = await ticketsRepository.createTicket(ticketData);
   return ticket;
 }
 
-export const ticketService = {
-  createUserTicket,
-  getTicketsTypes,
-  getUserTicket,
+export const ticketsService = {
+  findTicketTypes,
+  getTicketByUserId,
+  createTicket,
 };
