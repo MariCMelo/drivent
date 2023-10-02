@@ -1,3 +1,4 @@
+import { notFoundError } from "@/errors";
 import { hotelsRepository } from "@/repositories/hotels-repository";
 
 async function getAllHotels() {
@@ -5,8 +6,11 @@ async function getAllHotels() {
     return hotels
 }
 
-async function getHotelRooms() {
-    const room = await hotelsRepository.getHotelRooms()
+async function getHotelRooms(hotelId: number) {
+    const room = await hotelsRepository.getHotelRooms(hotelId);
+    if(!room) throw notFoundError();
+
+    return room;
 }
 
 export const hotelsService = {
