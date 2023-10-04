@@ -1,17 +1,19 @@
-import { AuthenticatedRequest } from '@/middlewares';
-import { hotelsService } from '@/services/hotels-service';
 import { Response } from 'express';
 import httpStatus from 'http-status';
+import { AuthenticatedRequest } from '@/middlewares';
+import { hotelsService } from '@/services';
 
 export async function getHotels(req: AuthenticatedRequest, res: Response) {
-  console.log('bateu no controller');
-  const hotels = await hotelsService.getAllHotels();
-  return res.status(httpStatus.OK).send(hotels);
+  const { userId } = req;
+
+  const hotels = await hotelsService.getHotels(userId);
+  res.status(httpStatus.OK).send(hotels);
 }
 
-export async function getHotelRooms(req: AuthenticatedRequest, res: Response) {
-  const hotelId = Number(req.params.hotelId)
+export async function getHotelsWithRooms(req: AuthenticatedRequest, res: Response) {
+  const { userId } = req;
+  const hotelId = Number(req.params.hotelId);
 
-  const rooms = await hotelsService.getHotelRooms(hotelId);
-  return res.status(httpStatus.OK).send(rooms);
+  const hotelWithRooms = await hotelsService.getHotelsWithRooms(userId, hotelId);
+  res.status(httpStatus.OK).send(hotelWithRooms);
 }
