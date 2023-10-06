@@ -5,6 +5,7 @@ import { enrollmentRepository, hotelRepository, ticketsRepository } from '@/repo
 
 async function validateUserBooking(userId: number) {
   const enrollment = await enrollmentRepository.findWithAddressByUserId(userId);
+ console.log("enrollment -->", enrollment ) 
   if (!enrollment) throw notFoundError();
 
   const ticket = await ticketsRepository.findTicketByEnrollmentId(enrollment.id);
@@ -40,4 +41,5 @@ async function getHotelsWithRooms(userId: number, hotelId: number) {
 export const hotelsService = {
   getHotels,
   getHotelsWithRooms,
+  validateUserBooking
 };
